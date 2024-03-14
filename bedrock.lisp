@@ -1,7 +1,10 @@
 (in-package :cl-user)
 (defpackage bedrock
   (:use :cl)
-  (:export :with-gensyms :aif :aand :with-local-symbols :make-keyword :define-error :in :λ :define-simple-class :maphashmap :is-keyword :any :pushback))
+  (:export :with-gensyms :aif :aand :with-local-symbols :make-keyword
+   :define-error :in :λ :define-simple-class :maphashmap :is-keyword :any :pushback
+   :hashset :set-items :set-add :set-contains :set-diff :set-intersection :set-join :make-hash-set
+   :define-class :with-interned-symbols :rewrite :define-anaphoric-macro))
 (in-package :bedrock)
 
 (defmacro with-gensyms (gensyms &body body)
@@ -18,21 +21,60 @@
 	       `(,sym ',(intern (symbol-name sym) *package*)))
 	     symbols))
      ,@body))
-	
+
+(defmacro define-anaphoric-macro (name args anaphoras &body body)
+  (let* ((anaphoras-rw (mapcar (lambda (a) `(,a . ,a)) anaphoras))
+	 (body (%rewrite anaphoras-rw body)))
+    `(defmacro ,name ,args
+       ,@body)))
+
+(defun %rewrite-expr (rewrites val)
+  (let ((res
+	  (dolist (rw rewrites)
+	    (when (and (symbolp (car rw))
+		       (symbolp val)
+		       (not (string= (package-name (or (symbol-package val) *package*))
+				     (package-name (find-package :keyword)))))
+	      (if (string= (symbol-name (car rw)) (symbol-name val))
+		  (return (cdr rw))))
+	    (if (equal (car rw) val)
+		(return (cdr rw))))))
+    (if res res val)))
+
+(defun %rewrite (rewrites body)
+  (mapcar
+   (lambda (f)
+     (if (listp f)
+	 (%rewrite rewrites f)
+	 (%rewrite-expr rewrites f)))
+   body))
+
+(defmacro rewrite (rewrites &body body)
+  "This macro rewrites the given body according to the rewrite rules"
+  (let ((new-body (mapcar (lambda (b) (%rewrite rewrites b)) body)))
+    `(progn
+       ,@new-body)))
+
+(defmacro with-interned-symbols (symbol-list &body body)
+  "Interns a set of symbols in the current package to variables of the same (symbol-name)."
+  (let ((symbol-list (mapcar (lambda (s)
+			       (list s `(intern (symbol-name ',s))))
+			     symbol-list)))
+    `(let ,symbol-list ,@body)))
+
 (defmacro aif (condition if-true &optional else)
-  "Anaphoric version of aif where you can refer to the condition with the variable ~it~"
-  (let ((it (intern "IT")))
-    `(let ((,it ,condition))
-       (if ,it
-	   ,if-true
-	   ,else))))
+  "Anaphoric version of if where you can refer to the condition with the variable ~it~"
+  `(let ((it ,condition))
+     (if it
+	 (rewrite ((it . bedrock::it)) ,if-true)
+	 (rewrite ((it . bedrock::it)) ,else))))
 
 (defmacro aand (&body conditions)
   (let ((first-cond (car conditions)))
     (if first-cond 
 	`(let ((it ,first-cond))
 	   (and it (aand ,@(cdr conditions))))
-         'it)))
+	'it)))
 
 (defun make-keyword (sym)
   (read-from-string (format nil ":~a" (write-to-string sym))))
