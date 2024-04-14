@@ -3,6 +3,5 @@
   :author "Marce Coll"
   :license "MIT"
   :components ((:file "bedrock")
-	       (:file "class")
-	       (:file "set"))
+	       (:file "class"))
   :description "")

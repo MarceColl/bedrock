@@ -25,8 +25,10 @@
 	
 (defmacro define-class (name superclasses slots &rest properties)
   "Extends defclass with some extras like delegates."
-  (let* ((delegates-defs (remove-if-not (lambda (p) (eq :delegate-to (car p))) properties))
+  (let* ((name (intern (symbol-name name) *package*))
+	 (delegates-defs (remove-if-not (lambda (p) (eq :delegate-to (car p))) properties))
 	 (delegates-codegen (reduce #'append (mapcar (lambda (delegate-def) (codegen-delegates name delegate-def)) delegates-defs))))
+	 
   `(progn
      (defclass ,name ,superclasses ,slots)
      ,@delegates-codegen)))
